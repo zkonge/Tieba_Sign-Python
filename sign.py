@@ -1,136 +1,131 @@
-# Tieba_Sign-Py
-
-print('Tieba_Sign Python version')
-print('Code by Konge(@zkonge)')
-print('Protocol from Kookxiang(@kookxiang)\n')
-
-print('Loading modules', end='')
-import hashlib, os, sys, time
+import hashlib
+import os
+import sys
+import requests
 from bs4 import BeautifulSoup
-import requests as req
 
-print('...Finish')
+print('Tieba sign python edition')
+print('Code by Konge(@zkonge)')
 
 
-class baiduUser:
-    r = req.Session()
+class BaiduUser:
+    r = requests.Session()
     r.headers = {}
 
-    def __init__(self, BDUSS):
-        self.BDUSS = BDUSS
-        self.r.cookies.set('BDUSS', BDUSS)
+    def __init__(self, cookies):
+        for item in cookies.split('; '):
+            item = item.split('=', 1)
+            self.r.cookies.set(item[0], item[1])
 
-    def getTbsPage(self):
-        rawPage = self.r.get("http://tieba.baidu.com/dc/common/tbs")
-        return rawPage.json()
+    def get_tbs_page(self):
+        return self.r.get("http://tieba.baidu.com/dc/common/tbs").json()
 
     @property
-    def isLogin(self):
-        return bool(self.getTbsPage()['is_login'])
+    def is_login(self):
+        return bool(self.get_tbs_page()['is_login'])
 
-    def getTbs(self):
-        return self.getTbsPage()['tbs']
+    def get_tbs(self):
+        return self.get_tbs_page()['tbs']
 
-    # ->[(tiebaName,tiebaId,tiebaExp),...]
-    def getLikedTiebaList(self):
-        likedTiebaList = []
+    # ->[(tieba_name,tieba_id,tiebaExp),...]
+    def get_liked_tieba_list(self):
+        liked_tieba_list = []
         pn = 1
 
         while True:
-            rawPage = self.r.get('http://tieba.baidu.com/f/like/mylike?pn=%d' % pn)
-            parsedPage = BeautifulSoup(rawPage.text, 'html.parser')
+            raw_page = self.r.get('http://tieba.baidu.com/f/like/mylike?pn=%d' % pn)
+            parsed_page = BeautifulSoup(raw_page.text, 'html.parser')
 
-            if not parsedPage.td:
-                return likedTiebaList
+            if not parsed_page.td:
+                return liked_tieba_list
 
-            rawLikedTiebaList = parsedPage.find_all('tr')
+            raw_liked_tieba_list = parsed_page.find_all('tr')
 
-            for likedTieba in rawLikedTiebaList:
-                if likedTieba.th:
+            for liked_tieba in raw_liked_tieba_list:
+                if liked_tieba.th:
                     continue
-                likedTieba = likedTieba.find_all('td')
-                tbName, tbExp, tbId = likedTieba[0].a['title'], likedTieba[1].a.getText(), likedTieba[-1].span['balvid']
-                likedTiebaList.append((tbName, tbId, tbExp))
+                liked_tieba = liked_tieba.find_all('td')
+                tb_name, tb_exp, tb_id = liked_tieba[0].a['title'], liked_tieba[1].a.getText(), liked_tieba[-1].span[
+                    'balvid']
+                liked_tieba_list.append((tb_name, tb_id, tb_exp))
             pn += 1
 
 
-def tiebaSign(tiebaUser, tiebaName, tiebaId):
+def tieba_sign(tieba_user, tieba_name, tieba_id):
     data = {
-        'BDUSS': tiebaUser.BDUSS,
         '_client_id': '03-00-DA-59-05-00-72-96-06-00-01-00-04-00-4C-43-01-00-34-F4-02-00-BC-25-09-00-4E-36',
         '_client_type': '4',
         '_client_version': '1.2.1.17',
         '_phone_imei': '540b43b59d21b7a4824e1fd31b08e9a6',
-        'fid': str(tiebaId),
-        'kw': tiebaName,
+        'fid': str(tieba_id),
+        'kw': tieba_name,
         'net_type': '3',
-        'tbs': tiebaUser.getTbs()
+        'tbs': tieba_user.get_tbs()
     }
 
-    signData = ''.join([k + '=' + data[k] for k in sorted(data.keys())])
-    signData += 'tiebaclient!!!'
-    signData = hashlib.md5(signData.encode()).hexdigest().upper()
+    sign_data = ''.join([k + '=' + data[k] for k in sorted(data.keys())])
+    sign_data += 'tiebaclient!!!'
+    sign_data = hashlib.md5(sign_data.encode()).hexdigest().upper()
 
-    data['sign'] = signData
+    data['sign'] = sign_data
 
-    returnData = tiebaUser.r.post('http://c.tieba.baidu.com/c/c/forum/sign', data=data).json()
-    code = returnData['error_code']
+    return_data = tieba_user.r.post('http://c.tieba.baidu.com/c/c/forum/sign', data=data).json()
+    code = return_data['error_code']
     if code == '0':
-        return 1, returnData['user_info']['sign_bonus_point']
+        return 1, return_data['user_info']['sign_bonus_point']
     elif code in ('3', '160002'):
-        return 0, 1  # haveSigned
+        return 0, 1  # have signed
     else:
-        return 0, 0, returnData['error_code'], returnData['error_msg']
+        return 0, 0, return_data['error_code'], return_data['error_msg']
 
 
-def work(likedTieba):
+def work(liked_tieba):
     global user  # FuckingCode..
-    ret = tiebaSign(user, likedTieba[0], likedTieba[1])
+    ret = tieba_sign(user, liked_tieba[0], liked_tieba[1])
     if ret[0]:
-        print('Signing', likedTieba[0], '...Exp', likedTieba[2], '+%s' % ret[1])
+        print('Signing', liked_tieba[0], '...Exp', liked_tieba[2], '+%s' % ret[1])
     elif ret[1]:
-        print('Signing', likedTieba[0], '...', 'HasSigned')
+        print('Signing', liked_tieba[0], '...', 'HasSigned')
     else:
         print('ERR~ ', ret[2], ret[3])
 
 
 try:
-    if not os.path.exists('cookie.txt'):
-        print('cookie.txt not found,create it and put your BDUSS value in it.')
-        exit()
-    with open('cookie.txt') as f:
-        BDUSS = f.read().strip()
+    cookie_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cookie.txt')
+    if not os.path.exists(cookie_path):
+        print('cookie.txt not found,create it and put your cookies in it.')
+        exit(1)
+    with open(cookie_path) as f:
+        user = BaiduUser(f.read().strip())
 
-    user = baiduUser(BDUSS)
+    if not user.is_login:
+        print('\nis it a invalid cookie?')
+        exit(1)
 
-    if not user.isLogin:
-        print('\nis it a invaild cookie?')
-        exit()
-
-    print('\ngetTiebaList', end='')
-    likedTiebaList = user.getLikedTiebaList()
+    print('\nget tieba list', end='')
+    liked_tieba_list = user.get_liked_tieba_list()
     print('...OK\n')
 
     if len(sys.argv) > 1 and sys.argv[1] == '-m':
-        print('NOTICE:Multi thread mode ON')
+        print('NOTICE:fast mode ON')
         from multiprocessing.dummy import Pool
 
         if len(sys.argv) > 2:
             pool = Pool(int(sys.argv[2]))
         else:
             pool = Pool(3)
-        pool.map(work, likedTiebaList)
+        pool.map(work, liked_tieba_list)
 
-    else:  # SingleThread
-        for likedTieba in likedTiebaList:
-            ret = tiebaSign(user, likedTieba[0], likedTieba[1])
+    else:
+        for liked_tieba in liked_tieba_list:
+            ret = tieba_sign(user, liked_tieba[0], liked_tieba[1])
             if ret[0]:
-                print('Signing', likedTieba[0], '...Exp', likedTieba[2], '+%s' % ret[1])
+                print('Signing', liked_tieba[0], '...Exp', liked_tieba[2], '+%s' % ret[1])
             elif ret[1]:
-                print('Signing', likedTieba[0], '...', 'HasSigned')
+                print('Signing', liked_tieba[0], '...', 'HasSigned')
             else:
                 print('ERR~ ', ret[2], ret[3])
 except KeyboardInterrupt:
     pass
 except Exception as e:
-    print('Program ERROR!! ', e)
+    print('\nProgram ERROR!! ', e)
